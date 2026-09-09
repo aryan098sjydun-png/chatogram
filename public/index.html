@@ -1,643 +1,448 @@
-let me = null;
-let partner = null;
-let room = null;
-let socket = null;
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>چتوگرام</title>
 
-const $ = id => document.getElementById(id);
-
-function toast(msg) {
-  const x = $("toast");
-  if (!x) return;
-
-  x.textContent = msg;
-  x.style.display = "block";
-
-  clearTimeout(window._toast);
-
-  window._toast = setTimeout(() => {
-    x.style.display = "none";
-  }, 2800);
-}
-
-function show(page) {
-  ["authPage", "homePage", "chatPage"].forEach(id => {
-    const el = $(id);
-    if (el) el.classList.add("hidden");
-  });
-
-  const target = $(page);
-  if (target) target.classList.remove("hidden");
-}
-
-function avatar(img, photo, fallback = "👤") {
-  if (!img) return;
-
-  if (photo) {
-    img.src = photo;
-    img.style.objectFit = "cover";
-  } else {
-    img.removeAttribute("src");
-    img.style.background =
-      "linear-gradient(135deg,#6b54f5,#282f4a)";
-    img.alt = fallback;
-  }
-}
-
-function escapeHtml(s) {
-  return String(s).replace(
-    /[&<>"']/g,
-    c => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;"
-    }[c])
-  );
-}
-
-function renderMe() {
-  if (!me) return;
-
-  if ($("myName")) {
-    $("myName").textContent = me.name;
-  }
-
-  if ($("myMeta")) {
-    $("myMeta").textContent =
-      (me.city || "") +
-      " • " +
-      (me.gender === "male" ? "مرد" : "زن");
-  }
-
-  avatar(
-    $("myPhoto"),
-    me.photo,
-    "👤"
-  );
-}
-
-/* =========================
-   اتصال به Socket.IO
-========================= */
-
-function connectSocket() {
-
-  if (socket) {
-    socket.disconnect();
-  }
-
-  socket = io();
-
-  socket.on("connect", () => {
-
-    socket.emit("login", {
-      name: me.name,
-      gender: me.gender,
-      city: me.city,
-      photo: me.photo || ""
-    });
-
-  });
-
-  socket.on("profile", user => {
-
-    me = user;
-
-    renderMe();
-
-    show("homePage");
-
-  });
-
-  socket.on("online_users", list => {
-
-    if ($("onlineCount")) {
-      $("onlineCount").textContent =
-        list.length;
+  <style>
+    * {
+      box-sizing: border-box;
     }
 
-    const box = $("onlineList");
-
-    if (!box) return;
-
-    box.innerHTML = "";
-
-    list
-      .filter(u => u.id !== me?.id)
-      .slice(0, 30)
-      .forEach(u => {
-
-        const row =
-          document.createElement("div");
-
-        row.className =
-          "onlineUser";
-
-        const im =
-          document.createElement("img");
-
-        im.className =
-          "avatar";
-
-        avatar(
-          im,
-          u.photo,
-          "👤"
-        );
-
-        const text =
-          document.createElement("div");
-
-        text.innerHTML =
-          "<b>" +
-          escapeHtml(u.name) +
-          "</b>" +
-          "<small>" +
-          escapeHtml(u.city || "") +
-          " • " +
-          (u.gender === "male"
-            ? "مرد"
-            : "زن") +
-          "</small>";
-
-        row.append(
-          im,
-          text
-        );
-
-        box.append(row);
-
-      });
-
-    if (!box.children.length) {
-
-      box.innerHTML =
-        '<div class="onlineUser">' +
-        '<span>😴</span>' +
-        '<div>' +
-        '<b>هنوز کسی آنلاین نیست</b>' +
-        '<small>کمی بعد دوباره امتحان کن</small>' +
-        '</div>' +
-        '</div>';
-
+    body {
+      margin: 0;
+      font-family: Tahoma, Arial, sans-serif;
+      background: #f4f5fb;
+      color: #202124;
     }
 
-  });
-
-  socket.on("searching", () => {
-
-    show("chatPage");
-
-    if ($("searching")) {
-      $("searching")
-        .classList
-        .remove("hidden");
+    button,
+    input,
+    select,
+    textarea {
+      font-family: inherit;
     }
 
-    if ($("messageForm")) {
-      $("messageForm")
-        .classList
-        .add("hidden");
+    .hidden {
+      display: none !important;
     }
 
-    if ($("messages")) {
-      $("messages").innerHTML = "";
+    .app {
+      width: 100%;
+      max-width: 600px;
+      min-height: 100vh;
+      margin: auto;
+      background: white;
+      box-shadow: 0 0 30px rgba(0,0,0,.08);
     }
 
-  });
-
-  socket.on("matched", data => {
-
-    room = data.room;
-    partner = data.partner;
-
-    if ($("searching")) {
-      $("searching")
-        .classList
-        .add("hidden");
+    header {
+      background: linear-gradient(135deg, #6754f5, #4432b8);
+      color: white;
+      padding: 25px 20px;
+      text-align: center;
     }
 
-    if ($("messageForm")) {
-      $("messageForm")
-        .classList
-        .remove("hidden");
+    header h1 {
+      margin: 0;
+      font-size: 28px;
     }
 
-    if ($("partnerName")) {
-      $("partnerName").textContent =
-        partner.name;
+    header p {
+      margin: 8px 0 0;
+      opacity: .9;
     }
 
-    if ($("partnerMeta")) {
-      $("partnerMeta").textContent =
-        partner.city +
-        " • " +
-        (partner.gender === "male"
-          ? "مرد"
-          : "زن");
+    .content {
+      padding: 20px;
     }
 
-    avatar(
-      $("partnerPhoto"),
-      partner.photo,
-      "👤"
-    );
-
-    if ($("messages")) {
-      $("messages").innerHTML =
-        '<div class="msg">' +
-        "👋 گفت‌وگو شروع شد! سلام کن." +
-        "</div>";
+    .welcome {
+      text-align: center;
+      margin-bottom: 20px;
     }
 
-  });
-
-  socket.on("message", m => {
-
-    const div =
-      document.createElement("div");
-
-    div.className = "msg";
-
-    div.innerHTML =
-      escapeHtml(m.text) +
-      "<time>" +
-      escapeHtml(m.time || "") +
-      "</time>";
-
-    if ($("messages")) {
-
-      $("messages").append(div);
-
-      $("messages").scrollTop =
-        $("messages").scrollHeight;
-
+    .welcome h2 {
+      margin-bottom: 8px;
     }
 
-  });
-
-  socket.on("left_chat", () => {
-
-    room = null;
-    partner = null;
-
-    show("homePage");
-
-  });
-
-  socket.on("reported", message => {
-    toast(message);
-  });
-
-  socket.on("auth_error", message => {
-
-    toast(message);
-
-    if (socket) {
-      socket.disconnect();
-      socket = null;
+    .profile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 15px;
+      background: #f7f7fb;
+      border-radius: 16px;
+      margin-bottom: 20px;
     }
 
-    show("authPage");
-
-  });
-
-  socket.on("error_msg", message => {
-    toast(message);
-  });
-
-}
-
-/* =========================
-   ورود مستقیم
-========================= */
-
-const enterForm =
-  $("enterForm");
-
-if (enterForm) {
-
-  enterForm.onsubmit = e => {
-
-    e.preventDefault();
-
-    const name =
-      $("enterName")?.value.trim();
-
-    const gender =
-      $("enterGender")?.value;
-
-    const city =
-      $("enterCity")?.value.trim();
-
-    if (!name) {
-      toast("اسم خودت را وارد کن.");
-      return;
+    .avatar {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: linear-gradient(135deg,#6b54f5,#282f4a);
+      flex-shrink: 0;
     }
 
-    if (!["male", "female"].includes(gender)) {
-      toast("جنسیت را انتخاب کن.");
-      return;
+    .profile-info {
+      flex: 1;
     }
 
-    if (!city) {
-      toast("شهرت را وارد کن.");
-      return;
+    .profile-info b {
+      display: block;
+      font-size: 16px;
+      margin-bottom: 5px;
     }
 
-    me = {
-      id: null,
-      name,
-      gender,
-      city,
-      photo: ""
-    };
+    .profile-info small {
+      color: #777;
+    }
 
-    localStorage.setItem(
-      "chatogram_profile",
-      JSON.stringify(me)
-    );
+    .section-title {
+      font-weight: bold;
+      margin: 20px 0 12px;
+    }
 
-    renderMe();
+    .find-buttons {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
 
-    connectSocket();
+    .findBtn {
+      border: 0;
+      padding: 17px;
+      border-radius: 14px;
+      background: #6754f5;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
 
-  };
+    .findBtn:active {
+      transform: scale(.98);
+    }
 
-}
+    .findBtn.any {
+      background: #222;
+    }
 
-/* =========================
-   دکمه‌های پیدا کردن
-========================= */
+    .online-box {
+      margin-top: 20px;
+      border: 1px solid #eee;
+      border-radius: 16px;
+      overflow: hidden;
+    }
 
-document
-  .querySelectorAll(".findBtn")
-  .forEach(button => {
+    .online-title {
+      padding: 15px;
+      background: #fafafa;
+      font-weight: bold;
+    }
 
-    button.onclick = () => {
+    .onlineUser {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 15px;
+      border-top: 1px solid #eee;
+    }
 
-      if (!socket) {
-        toast(
-          "ابتدا وارد چتوگرام شوید."
-        );
-        return;
+    .onlineUser .avatar {
+      width: 42px;
+      height: 42px;
+    }
+
+    .onlineUser b {
+      display: block;
+    }
+
+    .onlineUser small {
+      color: #777;
+    }
+
+    /* CHAT */
+
+    .chat-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 15px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .chat-header-info {
+      flex: 1;
+    }
+
+    .chat-header-info b {
+      display: block;
+    }
+
+    .chat-header-info small {
+      color: #777;
+    }
+
+    .chat-actions button {
+      border: 0;
+      background: #f1f1f5;
+      padding: 9px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    .searching {
+      text-align: center;
+      padding: 70px 20px;
+    }
+
+    .loader {
+      width: 45px;
+      height: 45px;
+      border: 4px solid #eee;
+      border-top-color: #6754f5;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
       }
+    }
 
-      room = null;
-      partner = null;
+    .messages {
+      height: calc(100vh - 260px);
+      min-height: 350px;
+      overflow-y: auto;
+      padding: 15px;
+      background: #f7f7fb;
+    }
 
-      show("chatPage");
+    .msg {
+      background: white;
+      border-radius: 14px;
+      padding: 10px 13px;
+      margin-bottom: 10px;
+      width: fit-content;
+      max-width: 85%;
+      box-shadow: 0 2px 7px rgba(0,0,0,.05);
+      word-break: break-word;
+    }
 
-      if ($("searching")) {
-        $("searching")
-          .classList
-          .remove("hidden");
+    .msg.me {
+      margin-right: auto;
+      background: #6754f5;
+      color: white;
+    }
+
+    .msg time {
+      display: block;
+      font-size: 10px;
+      opacity: .6;
+      margin-top: 5px;
+    }
+
+    #messageForm {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      border-top: 1px solid #eee;
+      background: white;
+    }
+
+    #messageInput {
+      flex: 1;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 12px;
+      outline: none;
+      font-size: 15px;
+    }
+
+    #messageForm button {
+      width: 55px;
+      border: 0;
+      border-radius: 12px;
+      background: #6754f5;
+      color: white;
+      font-size: 20px;
+    }
+
+    .bottom-buttons {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .bottom-buttons button {
+      flex: 1;
+      border: 0;
+      padding: 12px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    #nextBtn {
+      background: #6754f5;
+      color: white;
+    }
+
+    #reportBtn {
+      background: #eee;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 25px;
+      transform: translateX(-50%);
+      background: #222;
+      color: white;
+      padding: 13px 18px;
+      border-radius: 12px;
+      display: none;
+      z-index: 1000;
+      max-width: 90%;
+      text-align: center;
+    }
+
+    @media (max-width: 600px) {
+      .app {
+        min-height: 100vh;
+        box-shadow: none;
       }
-
-      if ($("messageForm")) {
-        $("messageForm")
-          .classList
-          .add("hidden");
-      }
-
-      if ($("messages")) {
-        $("messages").innerHTML = "";
-      }
-
-      socket.emit(
-        "find",
-        {
-          lookingFor:
-            button.dataset.gender
-        }
-      );
-
-    };
-
-  });
-
-/* =========================
-   نفر بعدی
-========================= */
-
-if ($("nextBtn")) {
-
-  $("nextBtn").onclick = () => {
-
-    if (socket) {
-      socket.emit("next");
     }
+  </style>
+</head>
 
-  };
+<body>
 
-}
+<div class="app">
 
-/* =========================
-   ارسال پیام
-========================= */
+  <header>
+    <h1>💬 چتوگرام</h1>
+    <p>گفت‌وگوی ناشناس با افراد آنلاین</p>
+  </header>
 
-if ($("messageForm")) {
+  <!-- HOME -->
+  <section id="homePage" class="content">
 
-  $("messageForm").onsubmit =
-    e => {
+    <div class="welcome">
+      <h2>خوش آمدی 👋</h2>
+      <p>بدون ثبت‌نام با افراد جدید چت کن.</p>
+    </div>
 
-      e.preventDefault();
+    <div class="profile">
+      <img id="myPhoto" class="avatar" alt="کاربر">
+      <div class="profile-info">
+        <b id="myName">کاربر مهمان</b>
+        <small id="myMeta">در حال اتصال...</small>
+      </div>
+    </div>
 
-      const input =
-        $("messageInput");
+    <div class="section-title">
+      با چه کسی می‌خواهی صحبت کنی؟
+    </div>
 
-      if (!input) return;
+    <div class="find-buttons">
+      <button class="findBtn" data-gender="male">
+        👨 چت با آقا
+      </button>
 
-      const text =
-        input.value.trim();
+      <button class="findBtn" data-gender="female">
+        👩 چت با خانم
+      </button>
 
-      if (
-        !text ||
-        !room ||
-        !socket
-      ) {
-        return;
-      }
+      <button class="findBtn any" data-gender="any">
+        🎲 چت تصادفی
+      </button>
+    </div>
 
-      /*
-        پیام را فقط بعد از ارسال
-        توسط سرور نمایش می‌دهیم.
-      */
+    <div class="online-box">
+      <div class="online-title">
+        🟢 کاربران آنلاین: <span id="onlineCount">0</span>
+      </div>
 
-      socket.emit(
-        "message",
-        {
-          room,
-          text
-        }
-      );
+      <div id="onlineList"></div>
+    </div>
 
-      input.value = "";
+  </section>
 
-    };
+  <!-- CHAT -->
+  <section id="chatPage" class="hidden">
 
-}
+    <div class="chat-header">
 
-/* =========================
-   پروفایل
-========================= */
+      <img id="partnerPhoto" class="avatar" alt="کاربر">
 
-if ($("profileBtn")) {
+      <div class="chat-header-info">
+        <b id="partnerName">در حال جستجو...</b>
+        <small id="partnerMeta">منتظر اتصال</small>
+      </div>
 
-  $("profileBtn").onclick = () => {
+    </div>
 
-    if (!me) return;
+    <div id="searching" class="searching">
 
-    if ($("editName")) {
-      $("editName").value =
-        me.name || "";
-    }
+      <div class="loader"></div>
 
-    if ($("editGender")) {
-      $("editGender").value =
-        me.gender || "male";
-    }
+      <h3>در حال پیدا کردن فرد مناسب...</h3>
 
-    if ($("editCity")) {
-      $("editCity").value =
-        me.city || "";
-    }
+      <p>
+        لطفاً چند لحظه صبر کن
+      </p>
 
-    avatar(
-      $("editPhoto"),
-      me.photo,
-      "👤"
-    );
+      <button id="cancelSearch">
+        انصراف
+      </button>
 
-    $("profileModal")
-      ?.classList
-      .remove("hidden");
+    </div>
 
-  };
+    <div id="messages" class="messages"></div>
 
-}
+    <form id="messageForm" class="hidden">
 
-/* =========================
-   بستن پروفایل
-========================= */
+      <input
+        id="messageInput"
+        type="text"
+        maxlength="2000"
+        placeholder="پیامت را بنویس..."
+        autocomplete="off"
+      >
 
-if ($("closeModal")) {
+      <button type="submit">
+        ➤
+      </button>
 
-  $("closeModal").onclick = () => {
+    </form>
 
-    $("profileModal")
-      ?.classList
-      .add("hidden");
+    <div class="bottom-buttons">
 
-  };
+      <button id="nextBtn">
+        ⏭ نفر بعد
+      </button>
 
-}
+      <button id="reportBtn">
+        🚩 گزارش
+      </button>
 
-/* =========================
-   انتخاب عکس
-========================= */
+    </div>
 
-if ($("photoInput")) {
+  </section>
 
-  $("photoInput").onchange =
-    e => {
+</div>
 
-      const file =
-        e.target.files[0];
+<div id="toast" class="toast"></div>
 
-      if (!file) return;
+<!-- Socket.IO -->
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 
-      if (
-        file.size >
-        2 * 1024 * 1024
-      ) {
+<!-- فایل اصلی برنامه -->
+<script src="app.js"></script>
 
-        toast(
-          "حجم عکس باید کمتر از ۲ مگابایت باشد."
-        );
-
-        return;
-      }
-
-      const reader =
-        new FileReader();
-
-      reader.onload = () => {
-
-        if ($("editPhoto")) {
-
-          $("editPhoto").src =
-            reader.result;
-
-          $("editPhoto").dataset.photo =
-            reader.result;
-
-        }
-
-      };
-
-      reader.readAsDataURL(file);
-
-    };
-
-}
-
-/* =========================
-   ذخیره پروفایل
-========================= */
-
-if ($("saveProfile")) {
-
-  $("saveProfile").onclick = () => {
-
-    if (!me) return;
-
-    const name =
-      $("editName")?.value.trim();
-
-    const gender =
-      $("editGender")?.value;
-
-    const city =
-      $("editCity")?.value.trim();
-
-    const photo =
-      $("editPhoto")?.dataset.photo ||
-      me.photo ||
-      "";
-
-    if (!name) {
-      toast("نام را وارد کنید.");
-      return;
-    }
-
-    if (!city) {
-      toast("شهر را وارد کنید.");
-      return;
-    }
-
-    if (!["male", "female"].includes(gender)) {
-      toast("جنسیت را انتخاب کنید.");
-      return;
-    }
-
-    me.name = name;
-    me.gender = gender;
-    me.city = city;
-    me.photo = photo;
-
-    localStorage.setItem(
-      "chatogram_profile",
-      JSON.stringify(me)
-    );
-
-    renderMe();
-
-    if (socket) {
-
-      socket.emit(
-        "login",
-        {
-          name: me.name,
-         
+</body>
+</html>
