@@ -1,30 +1,42 @@
 "use strict";
 
 /*
-  چتوگرام
-  نسخه بدون ثبت نام
+  ==========================================
+  CHATOGRAM - Frontend
+  بدون ثبت نام
+  چت واقعی با Socket.IO
+  ==========================================
 */
+
+
+/*
+  ⚠️ خیلی مهم:
+  اینجا آدرس Render سرور را قرار بده.
+
+  مثال:
+  const SERVER_URL = "https://chatogram-xxxx.onrender.com";
+
+  آدرس واقعی Render خودت را جایگزین کن.
+*/
+
+const SERVER_URL = "https://YOUR-RENDER-APP.onrender.com";
+
 
 let me = null;
 let partner = null;
 let room = null;
 let socket = null;
 
-/*
-  اگر Frontend روی همان Render باشد:
-  const SERVER_URL = "";
-  
-  اگر Frontend روی GitHub Pages باشد:
-  آدرس Render خودت را اینجا بگذار.
-*/
-const SERVER_URL = "";
 
-
-/* ---------------- HELPERS ---------------- */
+/* ==========================================
+   HELPERS
+   ========================================== */
 
 const $ = id => document.getElementById(id);
 
+
 function toast(message) {
+
   const box = $("toast");
 
   if (!box) {
@@ -42,13 +54,19 @@ function toast(message) {
   }, 3000);
 }
 
+
 function show(page) {
 
   const home = $("homePage");
   const chat = $("chatPage");
 
-  if (home) home.classList.add("hidden");
-  if (chat) chat.classList.add("hidden");
+  if (home) {
+    home.classList.add("hidden");
+  }
+
+  if (chat) {
+    chat.classList.add("hidden");
+  }
 
   if (page === "homePage" && home) {
     home.classList.remove("hidden");
@@ -58,6 +76,7 @@ function show(page) {
     chat.classList.remove("hidden");
   }
 }
+
 
 function escapeHtml(value) {
 
@@ -73,44 +92,67 @@ function escapeHtml(value) {
   );
 }
 
+
 function avatar(image, photo) {
 
-  if (!image) return;
+  if (!image) {
+    return;
+  }
 
   if (photo) {
+
     image.src = photo;
     image.style.objectFit = "cover";
+
   } else {
+
     image.removeAttribute("src");
+
     image.style.background =
       "linear-gradient(135deg,#6b54f5,#282f4a)";
+
   }
 }
 
 
-/* ---------------- GUEST USER ---------------- */
+/* ==========================================
+   GUEST USER
+   ========================================== */
 
 function createGuest() {
 
-  const saved = localStorage.getItem("chatogram_profile");
+  const saved =
+    localStorage.getItem("chatogram_profile");
 
   if (saved) {
 
     try {
-      me = JSON.parse(saved);
+
+      const profile =
+        JSON.parse(saved);
 
       if (
-        me &&
-        me.id &&
-        me.name &&
-        me.gender &&
-        me.city
+        profile &&
+        profile.id &&
+        profile.name &&
+        profile.gender &&
+        profile.city
       ) {
+
+        me = profile;
+
         return me;
       }
 
-    } catch (_) {}
+    } catch (_) {
+
+      localStorage.removeItem(
+        "chatogram_profile"
+      );
+
+    }
   }
+
 
   const id =
     "guest_" +
@@ -118,7 +160,8 @@ function createGuest() {
     "_" +
     Math.random()
       .toString(36)
-      .slice(2, 9);
+      .substring(2, 10);
+
 
   me = {
 
@@ -136,25 +179,35 @@ function createGuest() {
 
   };
 
+
   localStorage.setItem(
     "chatogram_profile",
     JSON.stringify(me)
   );
 
+
   return me;
 }
 
 
-/* ---------------- PROFILE ---------------- */
+/* ==========================================
+   PROFILE
+   ========================================== */
 
 function renderMe() {
 
-  if (!me) return;
+  if (!me) {
+    return;
+  }
+
 
   if ($("myName")) {
+
     $("myName").textContent =
       me.name || "کاربر مهمان";
+
   }
+
 
   if ($("myMeta")) {
 
@@ -167,7 +220,9 @@ function renderMe() {
       (me.city || "ایران") +
       " • " +
       gender;
+
   }
+
 
   avatar(
     $("myPhoto"),
@@ -176,9 +231,16 @@ function renderMe() {
 }
 
 
-/* ---------------- SOCKET ---------------- */
+/* ==========================================
+   SOCKET.IO CONNECTION
+   ========================================== */
 
 function connectSocket() {
+
+  /*
+    اگر اتصال قبلی وجود دارد،
+    ابتدا قطعش می‌کنیم.
+  */
 
   if (socket) {
 
@@ -189,293 +251,515 @@ function connectSocket() {
     socket = null;
   }
 
-  const socketOptions = {
-
-    transports: [
-      "websocket",
-      "polling"
-    ]
-
-  };
 
   /*
-    اگر SERVER_URL خالی باشد،
-    به همان دامنه وصل می‌شود.
+    بررسی آدرس سرور
+  */
+
+  if (
+    !SERVER_URL ||
+    SERVER_URL.includes("YOUR-RENDER-APP")
+  ) {
+
+    toast(
+      "آدرس سرور Render هنوز داخل app.js قرار نگرفته است."
+    );
+
+    console.error(
+      "SERVER_URL is not configured."
+    );
+
+    return;
+  }
+
+
+  /*
+    اتصال مستقیم به Render
   */
 
   socket = io(
-    SERVER_URL || undefined,
-    socketOptions
+    SERVER_URL,
+    {
+      transports: [
+        "websocket",
+        "polling"
+      ],
+
+      reconnection: true,
+
+      reconnectionAttempts: Infinity,
+
+      reconnectionDelay: 1000,
+
+      timeout: 20000
+    }
   );
 
+
+  /* ========================================
+     CONNECTED
+     ======================================== */
 
   socket.on("connect", () => {
 
     console.log(
-      "Connected:",
+      "Chatogram connected:",
       socket.id
     );
 
-    socket.emit("guest_login", {
-      profile: me
-    });
 
-  });
+    /*
+      ورود مهمان
+    */
 
-
-  socket.on("guest_profile", profile => {
-
-    if (!profile) return;
-
-    me = profile;
-
-    localStorage.setItem(
-      "chatogram_profile",
-      JSON.stringify(me)
+    socket.emit(
+      "guest_login",
+      {
+        profile: me
+      }
     );
 
-    renderMe();
-
   });
 
 
-  socket.on("online_users", list => {
+  /* ========================================
+     GUEST PROFILE
+     ======================================== */
 
-    if (!Array.isArray(list)) return;
+  socket.on(
+    "guest_profile",
+    profile => {
 
-    if ($("onlineCount")) {
-      $("onlineCount").textContent =
-        list.length;
-    }
+      if (!profile) {
+        return;
+      }
 
-    const box = $("onlineList");
 
-    if (!box) return;
+      me = profile;
 
-    box.innerHTML = "";
 
-    const others = list
-      .filter(u => u && u.id !== me?.id)
-      .slice(0, 30);
-
-    others.forEach(user => {
-
-      const row =
-        document.createElement("div");
-
-      row.className =
-        "onlineUser";
-
-      const img =
-        document.createElement("img");
-
-      img.className =
-        "avatar";
-
-      avatar(
-        img,
-        user.photo
+      localStorage.setItem(
+        "chatogram_profile",
+        JSON.stringify(me)
       );
 
-      const text =
-        document.createElement("div");
 
-      const gender =
-        user.gender === "female"
-          ? "زن"
-          : "مرد";
+      renderMe();
 
-      text.innerHTML =
-        "<b>" +
-        escapeHtml(
-          user.name || "کاربر"
-        ) +
-        "</b>" +
-        "<small>" +
-        escapeHtml(
-          user.city || "نامشخص"
-        ) +
-        " • " +
-        gender +
-        "</small>";
+    }
+  );
 
-      row.appendChild(img);
-      row.appendChild(text);
 
-      box.appendChild(row);
+  /* ========================================
+     ONLINE USERS
+     ======================================== */
 
-    });
+  socket.on(
+    "online_users",
+    list => {
 
-    if (!box.children.length) {
+      if (!Array.isArray(list)) {
+        return;
+      }
 
-      box.innerHTML = `
-        <div class="onlineUser">
-          <span style="font-size:30px">😴</span>
-          <div>
-            <b>هنوز کسی آنلاین نیست</b>
-            <small>کمی بعد دوباره امتحان کن</small>
+
+      if ($("onlineCount")) {
+
+        $("onlineCount").textContent =
+          list.length;
+
+      }
+
+
+      const box =
+        $("onlineList");
+
+
+      if (!box) {
+        return;
+      }
+
+
+      box.innerHTML = "";
+
+
+      const others =
+        list
+          .filter(
+            user =>
+              user &&
+              user.id !== me?.id
+          )
+          .slice(0, 30);
+
+
+      others.forEach(user => {
+
+        const row =
+          document.createElement("div");
+
+        row.className =
+          "onlineUser";
+
+
+        const img =
+          document.createElement("img");
+
+        img.className =
+          "avatar";
+
+
+        avatar(
+          img,
+          user.photo
+        );
+
+
+        const text =
+          document.createElement("div");
+
+
+        const gender =
+          user.gender === "female"
+            ? "زن"
+            : "مرد";
+
+
+        text.innerHTML =
+          "<b>" +
+          escapeHtml(
+            user.name || "کاربر"
+          ) +
+          "</b>" +
+
+          "<small>" +
+          escapeHtml(
+            user.city || "نامشخص"
+          ) +
+          " • " +
+          gender +
+          "</small>";
+
+
+        row.appendChild(img);
+
+        row.appendChild(text);
+
+        box.appendChild(row);
+
+      });
+
+
+      if (!box.children.length) {
+
+        box.innerHTML = `
+          <div class="onlineUser">
+            <span style="font-size:30px">😴</span>
+
+            <div>
+              <b>هنوز کسی آنلاین نیست</b>
+              <small>
+                وقتی کاربران وارد شوند اینجا نمایش داده می‌شوند.
+              </small>
+            </div>
+
           </div>
-        </div>
-      `;
+        `;
+
+      }
 
     }
-
-  });
-
-
-  socket.on("searching", () => {
-
-    show("chatPage");
-
-    room = null;
-    partner = null;
-
-    $("searching")?.classList.remove(
-      "hidden"
-    );
-
-    $("messages").innerHTML = "";
-
-    $("messageForm")?.classList.add(
-      "hidden"
-    );
-
-  });
+  );
 
 
-  socket.on("matched", data => {
+  /* ========================================
+     SEARCHING
+     ======================================== */
 
-    if (!data) return;
+  socket.on(
+    "searching",
+    () => {
 
-    room = data.room || null;
-    partner = data.partner || null;
+      room = null;
+      partner = null;
 
-    $("searching")?.classList.add(
-      "hidden"
-    );
 
-    $("messageForm")?.classList.remove(
-      "hidden"
-    );
+      show("chatPage");
 
-    if (partner) {
 
-      $("partnerName").textContent =
-        partner.name || "کاربر";
+      $("searching")?.classList.remove(
+        "hidden"
+      );
 
-      const gender =
-        partner.gender === "female"
-          ? "زن"
-          : "مرد";
 
-      $("partnerMeta").textContent =
-        (partner.city || "نامشخص") +
-        " • " +
-        gender;
+      $("messageForm")?.classList.add(
+        "hidden"
+      );
 
-      avatar(
-        $("partnerPhoto"),
-        partner.photo
+
+      if ($("messages")) {
+
+        $("messages").innerHTML = `
+          <div class="msg">
+            🔎 در حال پیدا کردن یک نفر...
+            <br>
+            لطفاً کمی صبر کن.
+          </div>
+        `;
+
+      }
+
+    }
+  );
+
+
+  /* ========================================
+     MATCHED
+     ======================================== */
+
+  socket.on(
+    "matched",
+    data => {
+
+      if (!data) {
+        return;
+      }
+
+
+      room =
+        data.room || null;
+
+
+      partner =
+        data.partner || null;
+
+
+      $("searching")?.classList.add(
+        "hidden"
+      );
+
+
+      $("messageForm")?.classList.remove(
+        "hidden"
+      );
+
+
+      if (partner) {
+
+        if ($("partnerName")) {
+
+          $("partnerName").textContent =
+            partner.name || "کاربر";
+
+        }
+
+
+        const gender =
+          partner.gender === "female"
+            ? "زن"
+            : "مرد";
+
+
+        if ($("partnerMeta")) {
+
+          $("partnerMeta").textContent =
+            (partner.city || "نامشخص") +
+            " • " +
+            gender;
+
+        }
+
+
+        avatar(
+          $("partnerPhoto"),
+          partner.photo
+        );
+
+      }
+
+
+      if ($("messages")) {
+
+        $("messages").innerHTML = `
+          <div class="msg">
+            👋 گفت‌وگو شروع شد!
+            <br>
+            سلام کن 😊
+          </div>
+        `;
+
+      }
+
+
+      $("messageInput")?.focus();
+
+    }
+  );
+
+
+  /* ========================================
+     MESSAGE
+     ======================================== */
+
+  socket.on(
+    "message",
+    message => {
+
+      if (!message) {
+        return;
+      }
+
+
+      const div =
+        document.createElement("div");
+
+
+      div.className =
+        "msg";
+
+
+      div.innerHTML =
+        escapeHtml(
+          message.text || ""
+        ) +
+
+        (
+          message.time
+            ? `
+              <time>
+                ${escapeHtml(message.time)}
+              </time>
+            `
+            : ""
+        );
+
+
+      if ($("messages")) {
+
+        $("messages").appendChild(div);
+
+        $("messages").scrollTop =
+          $("messages").scrollHeight;
+
+      }
+
+    }
+  );
+
+
+  /* ========================================
+     LEFT CHAT
+     ======================================== */
+
+  socket.on(
+    "left_chat",
+    () => {
+
+      room = null;
+
+      partner = null;
+
+
+      if ($("messageForm")) {
+
+        $("messageForm").classList.add(
+          "hidden"
+        );
+
+      }
+
+
+      show("homePage");
+
+
+      if ($("messages")) {
+
+        $("messages").innerHTML = "";
+
+      }
+
+    }
+  );
+
+
+  /* ========================================
+     REPORT
+     ======================================== */
+
+  socket.on(
+    "reported",
+    message => {
+
+      toast(
+        message ||
+        "گزارش ثبت شد."
       );
 
     }
-
-    $("messages").innerHTML = `
-      <div class="msg">
-        👋 گفت‌وگو شروع شد!
-        <br>
-        سلام کن 😊
-      </div>
-    `;
-
-    $("messageInput")?.focus();
-
-  });
+  );
 
 
-  socket.on("message", message => {
+  /* ========================================
+     SERVER ERROR
+     ======================================== */
 
-    if (!message) return;
+  socket.on(
+    "error_msg",
+    message => {
 
-    const div =
-      document.createElement("div");
-
-    div.className = "msg";
-
-    div.innerHTML =
-      escapeHtml(message.text) +
-      (
-        message.time
-          ? "<time>" +
-            escapeHtml(message.time) +
-            "</time>"
-          : ""
+      toast(
+        message ||
+        "خطایی رخ داد."
       );
 
-    $("messages").appendChild(div);
-
-    $("messages").scrollTop =
-      $("messages").scrollHeight;
-
-  });
+    }
+  );
 
 
-  socket.on("left_chat", () => {
+  /* ========================================
+     CONNECTION ERROR
+     ======================================== */
 
-    room = null;
-    partner = null;
+  socket.on(
+    "connect_error",
+    error => {
 
-    show("homePage");
-
-    $("messages").innerHTML = "";
-
-  });
-
-
-  socket.on("reported", message => {
-
-    toast(
-      message || "گزارش ثبت شد."
-    );
-
-  });
+      console.error(
+        "Socket connection error:",
+        error
+      );
 
 
-  socket.on("error_msg", message => {
+      toast(
+        "اتصال به سرور برقرار نشد."
+      );
 
-    toast(
-      message || "خطایی رخ داد."
-    );
-
-  });
-
-
-  socket.on("connect_error", error => {
-
-    console.error(
-      "Socket error:",
-      error
-    );
-
-    toast(
-      "اتصال به سرور برقرار نشد."
-    );
-
-  });
+    }
+  );
 
 
-  socket.on("disconnect", () => {
+  /* ========================================
+     DISCONNECT
+     ======================================== */
 
-    console.log(
-      "Disconnected"
-    );
+  socket.on(
+    "disconnect",
+    reason => {
 
-  });
+      console.log(
+        "Chatogram disconnected:",
+        reason
+      );
+
+    }
+  );
 
 }
 
 
-/* ---------------- FIND ---------------- */
+/* ==========================================
+   FIND BUTTONS
+   ========================================== */
 
 document
   .querySelectorAll(".findBtn")
@@ -485,50 +769,77 @@ document
       "click",
       () => {
 
+        /*
+          اگر Socket ساخته نشده،
+          اتصال را برقرار کن.
+        */
+
         if (!socket) {
 
           toast(
             "در حال اتصال به سرور..."
           );
 
+
           connectSocket();
+
+
+          /*
+            کمی صبر می‌کنیم تا اتصال برقرار شود.
+          */
+
+          setTimeout(() => {
+
+            if (
+              socket &&
+              socket.connected
+            ) {
+
+              startSearch(button);
+
+            }
+
+          }, 1200);
+
 
           return;
         }
+
+
+        /*
+          اگر Socket ساخته شده ولی
+          هنوز وصل نیست.
+        */
 
         if (!socket.connected) {
 
           toast(
-            "سرور در دسترس نیست."
+            "در حال اتصال به سرور..."
           );
+
+
+          connectSocket();
+
+
+          setTimeout(() => {
+
+            if (
+              socket &&
+              socket.connected
+            ) {
+
+              startSearch(button);
+
+            }
+
+          }, 1200);
+
 
           return;
         }
 
-        const gender =
-          button.dataset.gender;
 
-        room = null;
-        partner = null;
-
-        show("chatPage");
-
-        $("searching")?.classList.remove(
-          "hidden"
-        );
-
-        $("messageForm")?.classList.add(
-          "hidden"
-        );
-
-        $("messages").innerHTML = "";
-
-        socket.emit(
-          "find",
-          {
-            lookingFor: gender
-          }
-        );
+        startSearch(button);
 
       }
     );
@@ -536,45 +847,164 @@ document
   });
 
 
-/* ---------------- NEXT ---------------- */
+function startSearch(button) {
+
+  if (
+    !socket ||
+    !socket.connected
+  ) {
+
+    toast(
+      "سرور در دسترس نیست."
+    );
+
+    return;
+  }
+
+
+  const gender =
+    button.dataset.gender;
+
+
+  if (
+    ![
+      "male",
+      "female",
+      "any"
+    ].includes(gender)
+  ) {
+
+    toast(
+      "نوع چت نامعتبر است."
+    );
+
+    return;
+  }
+
+
+  room = null;
+
+  partner = null;
+
+
+  show("chatPage");
+
+
+  $("searching")?.classList.remove(
+    "hidden"
+  );
+
+
+  $("messageForm")?.classList.add(
+    "hidden"
+  );
+
+
+  if ($("messages")) {
+
+    $("messages").innerHTML = `
+      <div class="msg">
+        🔎 در حال پیدا کردن مخاطب...
+      </div>
+    `;
+
+  }
+
+
+  socket.emit(
+    "find",
+    {
+      lookingFor: gender
+    }
+  );
+
+}
+
+
+/* ==========================================
+   NEXT
+   ========================================== */
 
 $("nextBtn")?.addEventListener(
   "click",
   () => {
 
-    if (!socket) return;
+    if (
+      !socket ||
+      !socket.connected
+    ) {
 
-    socket.emit("next");
+      toast(
+        "اتصال به سرور برقرار نیست."
+      );
+
+      return;
+    }
+
+
+    socket.emit(
+      "next"
+    );
+
 
     room = null;
+
     partner = null;
+
 
     $("messageForm")?.classList.add(
       "hidden"
     );
 
+
     $("searching")?.classList.remove(
       "hidden"
     );
 
-    $("messages").innerHTML = "";
+
+    if ($("messages")) {
+
+      $("messages").innerHTML = `
+        <div class="msg">
+          🔎 در حال پیدا کردن نفر بعدی...
+        </div>
+      `;
+
+    }
 
   }
 );
 
 
-/* ---------------- CANCEL ---------------- */
+/* ==========================================
+   CANCEL SEARCH
+   ========================================== */
 
 $("cancelSearch")?.addEventListener(
   "click",
   () => {
 
-    if (socket) {
-      socket.emit("next");
+    if (
+      socket &&
+      socket.connected
+    ) {
+
+      socket.emit(
+        "next"
+      );
+
     }
 
+
     room = null;
+
     partner = null;
+
+
+    $("messageForm")?.classList.add(
+      "hidden"
+    );
+
 
     show("homePage");
 
@@ -582,7 +1012,9 @@ $("cancelSearch")?.addEventListener(
 );
 
 
-/* ---------------- MESSAGE ---------------- */
+/* ==========================================
+   SEND MESSAGE
+   ========================================== */
 
 $("messageForm")?.addEventListener(
   "submit",
@@ -590,37 +1022,51 @@ $("messageForm")?.addEventListener(
 
     event.preventDefault();
 
+
     const input =
       $("messageInput");
 
-    if (!input) return;
+
+    if (!input) {
+      return;
+    }
+
 
     const text =
       input.value.trim();
 
-    if (!text) return;
 
-    if (!socket || !socket.connected) {
+    if (!text) {
+      return;
+    }
+
+
+    if (
+      !socket ||
+      !socket.connected
+    ) {
 
       toast(
-        "اتصال به سرور قطع است."
+        "اتصال به سرور قطع شده است."
       );
 
       return;
     }
+
 
     if (!room) {
 
       toast(
-        "هنوز با کسی متصل نشده‌ای."
+        "هنوز به کسی وصل نشده‌ای."
       );
 
       return;
     }
 
+
     /*
-      پیام را فقط یک بار از سرور دریافت می‌کنیم.
-      بنابراین اینجا خودمان پیام را اضافه نمی‌کنیم.
+      پیام فقط برای سرور ارسال می‌شود.
+      سرور آن را به هر دو نفر می‌فرستد.
     */
 
     socket.emit(
@@ -631,6 +1077,7 @@ $("messageForm")?.addEventListener(
       }
     );
 
+
     input.value = "";
 
     input.focus();
@@ -639,7 +1086,9 @@ $("messageForm")?.addEventListener(
 );
 
 
-/* ---------------- REPORT ---------------- */
+/* ==========================================
+   REPORT
+   ========================================== */
 
 $("reportBtn")?.addEventListener(
   "click",
@@ -654,14 +1103,30 @@ $("reportBtn")?.addEventListener(
       return;
     }
 
+
     const reason =
       prompt(
         "دلیل گزارش را بنویس:"
       );
 
-    if (!reason) return;
 
-    if (!socket) return;
+    if (!reason) {
+      return;
+    }
+
+
+    if (
+      !socket ||
+      !socket.connected
+    ) {
+
+      toast(
+        "اتصال به سرور برقرار نیست."
+      );
+
+      return;
+    }
+
 
     socket.emit(
       "report",
@@ -675,19 +1140,28 @@ $("reportBtn")?.addEventListener(
 );
 
 
-/* ---------------- START ---------------- */
+/* ==========================================
+   START APP
+   ========================================== */
 
 (function start() {
 
   /*
-    بدون ثبت نام!
+    بدون ثبت نام
   */
 
   createGuest();
 
+
   renderMe();
 
+
   show("homePage");
+
+
+  /*
+    اتصال به سرور واقعی
+  */
 
   connectSocket();
 
