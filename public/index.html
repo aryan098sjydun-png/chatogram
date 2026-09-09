@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>چتوگرام</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="toast"></div>
+<div class="app">
+
+  <section id="authPage" class="page">
+    <div class="brand">
+      <div class="logo">💬</div>
+      <div><h1>چتوگرام</h1><p>گفت‌وگوی ساده، سریع و امن</p></div>
+    </div>
+    <div class="hero"><h2>به چتوگرام خوش اومدی 👋</h2><p>با یک حساب کاربری وارد شو و با افراد آنلاین گفت‌وگو کن.</p></div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="login">ورود</button>
+      <button class="tab" data-tab="register">ثبت‌نام</button>
+    </div>
+
+    <form id="loginForm" class="form">
+      <label>نام کاربری</label><input id="loginUsername" required autocomplete="username" placeholder="مثلاً aryan0993">
+      <label>رمز عبور</label><input id="loginPassword" required type="password" autocomplete="current-password" placeholder="••••••••">
+      <button class="primary">🚀 ورود به چتوگرام</button>
+    </form>
+
+    <form id="registerForm" class="form hidden">
+      <label>نام کاربری</label><input id="regUsername" required placeholder="۳ تا ۲۴ کاراکتر انگلیسی">
+      <label>رمز عبور</label><input id="regPassword" required type="password" placeholder="حداقل ۶ کاراکتر">
+      <label>نام نمایشی</label><input id="regName" required placeholder="نام شما">
+      <div class="grid2">
+        <div><label>جنسیت</label><select id="regGender"><option value="male">مرد</option><option value="female">زن</option></select></div>
+        <div><label>شهر</label><input id="regCity" required placeholder="شهر"></div>
+      </div>
+      <button class="primary">✨ ساخت حساب</button>
+    </form>
+  </section>
+
+  <section id="homePage" class="page hidden">
+    <header class="topbar"><div class="miniBrand"><span class="miniLogo">💬</span><b>چتوگرام</b></div><button id="logoutBtn" class="ghost">خروج</button></header>
+
+    <div class="profileCard">
+      <div class="avatarWrap"><img id="myPhoto" class="avatar" src="" alt=""><span class="onlineDot"></span></div>
+      <div class="profileText"><h2 id="myName"></h2><p id="myMeta"></p></div>
+      <button id="profileBtn" class="iconBtn">✏️</button>
+    </div>
+
+    <div class="sectionTitle"><h3>پیدا کردن هم‌صحبت</h3><span>آنلاین‌ها: <b id="onlineCount">0</b></span></div>
+    <div class="findGrid">
+      <button class="findBtn" data-gender="any"><span>🌐</span><b>هر کسی</b><small>بدون محدودیت</small></button>
+      <button class="findBtn" data-gender="female"><span>👩</span><b>خانم</b><small>گفت‌وگو با خانم</small></button>
+      <button class="findBtn" data-gender="male"><span>👨</span><b>آقا</b><small>گفت‌وگو با آقا</small></button>
+    </div>
+
+    <div class="onlineBox"><div class="sectionTitle"><h3>چه کسانی آنلاین هستند؟</h3></div><div id="onlineList" class="onlineList"></div></div>
+  </section>
+
+  <section id="chatPage" class="page hidden">
+    <header class="chatHead"><button id="nextBtn" class="back">↪️</button><div class="partnerHead"><img id="partnerPhoto" class="avatar small"><div><b id="partnerName"></b><span id="partnerMeta"></span></div></div><button id="reportBtn" class="dangerIcon">⚑</button></header>
+    <div id="searching" class="searching hidden"><div class="spinner"></div><h2>در حال پیدا کردن هم‌صحبت...</h2><p>کمی صبر کن</p></div>
+    <div id="messages" class="messages"></div>
+    <form id="messageForm" class="composer hidden"><input id="messageInput" autocomplete="off" placeholder="پیامت رو بنویس..."><button>➤</button></form>
+  </section>
+
+  <div id="profileModal" class="modal hidden">
+    <div class="modalCard"><button class="close" id="closeModal">×</button><h2>پروفایل من</h2>
+      <div class="photoPicker"><img id="editPhoto" class="avatar big"><label class="photoBtn">📷 انتخاب عکس<input id="photoInput" type="file" accept="image/*" hidden></label></div>
+      <label>نام</label><input id="editName">
+      <label>جنسیت</label><select id="editGender"><option value="male">مرد</option><option value="female">زن</option></select>
+      <label>شهر</label><input id="editCity">
+      <button id="saveProfile" class="primary">ذخیره تغییرات</button>
+    </div>
+  </div>
+
+  <div id="reportModal" class="modal hidden">
+    <div class="modalCard"><button class="close" id="closeReport">×</button><h2>گزارش کاربر</h2><p>دلیل گزارش را بنویس.</p><textarea id="reportReason" rows="4" placeholder="مثلاً رفتار نامناسب..."></textarea><button id="sendReport" class="primary">ارسال گزارش</button></div>
+  </div>
+</div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
