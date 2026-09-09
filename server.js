@@ -18,14 +18,13 @@ const io = new Server(server, {
   }
 });
 
-const PORT =
-  Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
-const DATA_FILE =
-  path.join(__dirname, "data.json");
+const DATA_FILE = path.join(__dirname, "data.json");
 
-
-/* ---------------- MIDDLEWARE ---------------- */
+/* =========================
+   MIDDLEWARE
+========================= */
 
 app.use(
   cors({
@@ -45,105 +44,80 @@ app.use(
   )
 );
 
-
-/* ---------------- DATABASE ---------------- */
+/* =========================
+   DATABASE
+========================= */
 
 let db = {
   reports: []
 };
 
 try {
-
   if (fs.existsSync(DATA_FILE)) {
+    const raw = fs.readFileSync(DATA_FILE, "utf8");
 
-    const data =
-      JSON.parse(
-        fs.readFileSync(
-          DATA_FILE,
-          "utf8"
-        )
-      );
+    if (raw.trim()) {
+      const parsed = JSON.parse(raw);
 
-    if (data && typeof data === "object") {
-      db = data;
+      if (
+        parsed &&
+        typeof parsed === "object"
+      ) {
+        db = parsed;
+      }
     }
-
   }
-
-} catch (error) {
-
+} catch (err) {
   console.log(
     "Database load error:",
-    error.message
+    err.message
   );
-
 }
-
 
 if (!Array.isArray(db.reports)) {
   db.reports = [];
 }
 
-
-function save() {
-
+function saveDatabase() {
   try {
-
     fs.writeFileSync(
       DATA_FILE,
-      JSON.stringify(
-        db,
-        null,
-        2
-      ),
+      JSON.stringify(db, null, 2),
       "utf8"
     );
-
-  } catch (error) {
-
+  } catch (err) {
     console.log(
       "Database save error:",
-      error.message
+      err.message
     );
-
   }
-
 }
 
-
-/* ---------------- HELPERS ---------------- */
+/* =========================
+   HELPERS
+========================= */
 
 function clean(value, max = 100) {
-
-  return String(
-    value ?? ""
-  )
+  return String(value ?? "")
     .trim()
     .slice(0, max);
-
 }
 
-
-function makeId() {
-
+function makeGuestId() {
   return (
     "guest_" +
     Date.now() +
     "_" +
     crypto
-      .randomBytes(5)
+      .randomBytes(6)
       .toString("hex")
   );
-
 }
 
-
 function publicUser(user) {
-
   if (!user) return null;
 
   return {
-
     id: user.id,
 
     username:
@@ -165,221 +139,275 @@ function publicUser(user) {
 
     online:
       online.has(user.id)
-
   };
-
 }
 
-
-/* ---------------- ONLINE ---------------- */
+/* =========================
+   MEMORY
+========================= */
 
 const sockets = new Map();
 
+/*
+  socket.id -> user.id
+*/
+
 const online = new Map();
 
-const waiting = new Map();
-
-const rooms = new Map();
+/*
+  user.id -> socket.id
+*/
 
 const profiles = new Map();
 
+/*
+  user.id -> profile
+*/
 
-function emitOnline() {
+const waiting = new Map();
 
+/*
+  user.id -> lookingFor
+*/
+
+const rooms = new Map();
+
+/*
+  user.id -> room
+*/
+
+/* =========================
+   ONLINE USERS
+========================= */
+
+function emitOnlineUsers() {
   const users = [];
 
-  for (const id of online.keys()) {
-
-    const user =
-      profiles.get(id);
+  for (const userId of online.keys()) {
+    const user = profiles.get(userId);
 
     if (user) {
-
       users.push(
         publicUser(user)
       );
-
     }
-
   }
 
   io.emit(
     "online_users",
     users
   );
-
 }
 
+/* =========================
+   REMOVE FROM WAITING
+========================= */
 
-function removeWaiting(id) {
-
-  waiting.delete(id);
-
+function removeWaiting(userId) {
+  waiting.delete(userId);
 }
 
+/* =========================
+   HOME
+========================= */
 
-/* ---------------- HOME ---------------- */
+app.get("/", (req, res) => {
+  res.sendFile(
+    path.join(
+      __dirname,
+      "public",
+      "index.html"
+    )
+  );
+});
 
-app.get(
-  "/",
-  (req, res) => {
-
-    res.sendFile(
-      path.join(
-        __dirname,
-        "public",
-        "index.html"
-      )
-    );
-
-  }
-);
-
-
-/* ---------------- HEALTH ---------------- */
+/* =========================
+   HEALTH CHECK
+========================= */
 
 app.get(
   "/api/health",
   (req, res) => {
-
     res.json({
       ok: true,
       service: "Chatogram",
-      online: online.size
+      online: online.size,
+      waiting: waiting.size
     });
-
   }
 );
 
-
-/* ---------------- SOCKET ---------------- */
+/* =========================
+   SOCKET.IO
+========================= */
 
 io.on(
   "connection",
-  socket => {
-
+  (socket) => {
     console.log(
-      "New connection:",
+      "Connected:",
       socket.id
     );
 
-
-    /* GUEST LOGIN */
+    /* =====================
+       GUEST LOGIN
+    ===================== */
 
     socket.on(
       "guest_login",
-      data => {
+      (data = {}) => {
+        try {
+          const profile =
+            data.profile || {};
 
-        let profile =
-          data?.profile || {};
-
-        const id =
-          clean(
+          let id = clean(
             profile.id,
             100
-          ) || makeId();
+          );
 
+          if (!id) {
+            id = makeGuestId();
+          }
 
-        const user = {
+          /*
+            اگر همین کاربر قبلاً
+            وصل بوده، اتصال قبلی
+            حذف شود.
+          */
 
-          id,
+          const oldSocketId =
+            online.get(id);
 
-          username:
-            "guest_" +
-            id.slice(-8),
+          if (
+            oldSocketId &&
+            oldSocketId !== socket.id
+          ) {
+            const oldSocket =
+              io.sockets.sockets.get(
+                oldSocketId
+              );
 
-          name:
-            clean(
-              profile.name,
-              40
-            ) ||
-            "کاربر مهمان",
+            if (oldSocket) {
+              oldSocket.disconnect(
+                true
+              );
+            }
+          }
 
-          gender:
-            profile.gender === "female"
-              ? "female"
-              : "male",
+          const user = {
+            id,
 
-          city:
-            clean(
-              profile.city,
-              50
-            ) ||
-            "ایران",
+            username:
+              "guest_" +
+              id.slice(-8),
 
-          photo:
-            String(
-              profile.photo || ""
-            ).slice(
-              0,
-              700000
-            )
+            name:
+              clean(
+                profile.name,
+                40
+              ) ||
+              "کاربر مهمان",
 
-        };
+            gender:
+              profile.gender ===
+              "female"
+                ? "female"
+                : "male",
 
+            city:
+              clean(
+                profile.city,
+                50
+              ) ||
+              "ایران",
 
-        profiles.set(
-          id,
-          user
-        );
+            photo:
+              String(
+                profile.photo || ""
+              ).slice(
+                0,
+                700000
+              )
+          };
 
-        sockets.set(
-          socket.id,
-          id
-        );
+          profiles.set(
+            id,
+            user
+          );
 
-        online.set(
-          id,
-          socket.id
-        );
+          sockets.set(
+            socket.id,
+            id
+          );
 
+          online.set(
+            id,
+            socket.id
+          );
 
-        socket.emit(
-          "guest_profile",
-          publicUser(user)
-        );
+          socket.emit(
+            "guest_profile",
+            publicUser(user)
+          );
 
+          emitOnlineUsers();
 
-        emitOnline();
+          console.log(
+            "Guest login:",
+            id
+          );
+        } catch (err) {
+          console.log(
+            "Guest login error:",
+            err.message
+          );
 
+          socket.emit(
+            "error_msg",
+            "ورود مهمان انجام نشد."
+          );
+        }
       }
     );
 
-
-    /* FIND */
+    /* =====================
+       FIND PARTNER
+    ===================== */
 
     socket.on(
       "find",
-      data => {
-
-        const meId =
+      (data = {}) => {
+        const myId =
           sockets.get(
             socket.id
           );
 
-        const me =
-          profiles.get(
-            meId
-          );
-
-
-        if (!me) {
-
+        if (!myId) {
           socket.emit(
             "error_msg",
-            "اتصال شما هنوز آماده نیست."
+            "ابتدا وارد برنامه شوید."
           );
 
           return;
         }
 
+        const me =
+          profiles.get(myId);
 
-        const lookingFor =
-          clean(
-            data?.lookingFor,
-            10
+        if (!me) {
+          socket.emit(
+            "error_msg",
+            "پروفایل شما پیدا نشد."
           );
 
+          return;
+        }
+
+        let lookingFor =
+          clean(
+            data.lookingFor,
+            10
+          );
 
         if (
           ![
@@ -390,324 +418,424 @@ io.on(
             lookingFor
           )
         ) {
-
-          return;
-
+          lookingFor = "any";
         }
 
+        /*
+          اگر قبلاً داخل چت بوده
+        */
 
-        removeWaiting(meId);
+        const oldRoom =
+          rooms.get(myId);
 
+        if (oldRoom) {
+          socket.leave(
+            oldRoom
+          );
+
+          rooms.delete(
+            myId
+          );
+        }
+
+        removeWaiting(
+          myId
+        );
+
+        /*
+          دنبال یک نفر بگرد
+        */
 
         for (
           const [
             otherId,
-            wanted
+            otherLookingFor
           ] of waiting
         ) {
-
           if (
-            otherId === meId
+            otherId === myId
           ) {
             continue;
           }
-
 
           const other =
             profiles.get(
               otherId
             );
 
-
-          if (
-            !other ||
-            !online.has(otherId)
-          ) {
-
+          if (!other) {
             waiting.delete(
               otherId
             );
 
             continue;
-
           }
-
-
-          /*
-            خواسته فرد مقابل
-          */
 
           if (
-            wanted !== "any" &&
-            wanted !== me.gender
+            !online.has(
+              otherId
+            )
           ) {
+            waiting.delete(
+              otherId
+            );
 
             continue;
-
           }
-
 
           /*
-            خواسته کاربر فعلی
+            آیا جنسیت من
+            مورد قبول طرف مقابل است؟
           */
 
+          const otherAcceptsMe =
+            otherLookingFor ===
+              "any" ||
+            otherLookingFor ===
+              me.gender;
+
+          /*
+            آیا جنسیت طرف مقابل
+            مورد قبول من است؟
+          */
+
+          const iAcceptOther =
+            lookingFor ===
+              "any" ||
+            lookingFor ===
+              other.gender;
+
           if (
-            lookingFor !== "any" &&
-            other.gender !== lookingFor
+            !otherAcceptsMe ||
+            !iAcceptOther
           ) {
-
             continue;
-
           }
-
 
           const otherSocketId =
             online.get(
               otherId
             );
 
-
           const otherSocket =
             io.sockets.sockets.get(
               otherSocketId
             );
 
-
           if (!otherSocket) {
-
             waiting.delete(
               otherId
             );
 
             continue;
-
           }
 
+          /*
+            پیدا شد
+          */
 
           waiting.delete(
             otherId
           );
 
-
-          const room =
+          const roomId =
             "chat_" +
             crypto
-              .randomBytes(12)
+              .randomBytes(16)
               .toString("hex");
 
-
           rooms.set(
-            meId,
-            room
+            myId,
+            roomId
           );
 
           rooms.set(
             otherId,
-            room
+            roomId
           );
 
-
           socket.join(
-            room
+            roomId
           );
 
           otherSocket.join(
-            room
+            roomId
           );
-
 
           socket.emit(
             "matched",
             {
-              room,
+              room: roomId,
+
               partner:
                 publicUser(other)
             }
           );
 
-
           otherSocket.emit(
             "matched",
             {
-              room,
+              room: roomId,
+
               partner:
                 publicUser(me)
             }
           );
 
+          console.log(
+            "Matched:",
+            myId,
+            "<->",
+            otherId
+          );
 
           return;
-
         }
 
+        /*
+          اگر کسی پیدا نشد
+        */
 
         waiting.set(
-          meId,
+          myId,
           lookingFor
         );
-
 
         socket.emit(
           "searching"
         );
 
+        console.log(
+          "Waiting:",
+          myId,
+          lookingFor
+        );
       }
     );
 
-
-    /* MESSAGE */
+    /* =====================
+       SEND MESSAGE
+    ===================== */
 
     socket.on(
       "message",
-      data => {
-
-        const meId =
+      (data = {}) => {
+        const myId =
           sockets.get(
             socket.id
           );
 
+        if (!myId) {
+          return;
+        }
 
-        if (!meId) return;
-
-
-        const room =
+        const roomId =
           clean(
-            data?.room,
+            data.room,
             200
           );
 
-
         const text =
           clean(
-            data?.text,
+            data.text,
             2000
           );
 
-
-        if (!room || !text) {
+        if (
+          !roomId ||
+          !text
+        ) {
           return;
         }
 
+        /*
+          امنیت:
+          کاربر باید واقعاً
+          عضو همین اتاق باشد.
+        */
 
         if (
           rooms.get(
-            meId
-          ) !== room
+            myId
+          ) !== roomId
         ) {
-
           return;
-
         }
 
+        const partnerId =
+          [...rooms.entries()]
+            .find(
+              ([id, room]) =>
+                room === roomId &&
+                id !== myId
+            )?.[0] || null;
 
-        io.to(room).emit(
+        const message = {
+          id:
+            crypto
+              .randomBytes(8)
+              .toString("hex"),
+
+          text,
+
+          senderId:
+            myId,
+
+          time:
+            new Date()
+              .toLocaleTimeString(
+                "fa-IR",
+                {
+                  hour:
+                    "2-digit",
+
+                  minute:
+                    "2-digit"
+                }
+              )
+        };
+
+        /*
+          پیام واقعی به هر دو طرف
+        */
+
+        io.to(roomId).emit(
           "message",
-          {
-
-            text,
-
-            time:
-              new Date()
-                .toLocaleTimeString(
-                  "fa-IR",
-                  {
-                    hour:
-                      "2-digit",
-
-                    minute:
-                      "2-digit"
-                  }
-                )
-
-          }
+          message
         );
 
+        console.log(
+          "Message:",
+          myId,
+          "->",
+          partnerId,
+          text
+        );
       }
     );
 
-
-    /* NEXT */
+    /* =====================
+       NEXT
+    ===================== */
 
     socket.on(
       "next",
       () => {
-
-        const id =
+        const myId =
           sockets.get(
             socket.id
           );
 
-
-        if (!id) return;
-
-
-        removeWaiting(id);
-
-
-        const room =
-          rooms.get(id);
-
-
-        if (room) {
-
-          socket.leave(
-            room
-          );
-
+        if (!myId) {
+          return;
         }
 
+        removeWaiting(
+          myId
+        );
 
-        rooms.delete(id);
+        const roomId =
+          rooms.get(myId);
 
+        if (roomId) {
+          socket.leave(
+            roomId
+          );
+
+          /*
+            طرف مقابل هم از چت خارج شود
+          */
+
+          for (
+            const [
+              userId,
+              userRoom
+            ] of rooms
+          ) {
+            if (
+              userRoom ===
+                roomId &&
+              userId !== myId
+            ) {
+              const partnerSocketId =
+                online.get(
+                  userId
+                );
+
+              const partnerSocket =
+                io.sockets.sockets.get(
+                  partnerSocketId
+                );
+
+              if (
+                partnerSocket
+              ) {
+                partnerSocket.leave(
+                  roomId
+                );
+
+                partnerSocket.emit(
+                  "partner_left"
+                );
+              }
+
+              rooms.delete(
+                userId
+              );
+            }
+          }
+
+          rooms.delete(
+            myId
+          );
+        }
 
         socket.emit(
           "left_chat"
         );
-
       }
     );
 
-
-    /* REPORT */
+    /* =====================
+       REPORT
+    ===================== */
 
     socket.on(
       "report",
-      data => {
-
+      (data = {}) => {
         const reporterId =
           sockets.get(
             socket.id
           );
 
-
         const reportedId =
           clean(
-            data?.reportedId,
+            data.reportedId,
             100
           );
 
-
         const reason =
           clean(
-            data?.reason,
+            data.reason,
             300
           );
-
 
         if (
           !reporterId ||
           !reportedId ||
-          reporterId === reportedId ||
+          reporterId ===
+            reportedId ||
           !reason
         ) {
+          socket.emit(
+            "error_msg",
+            "اطلاعات گزارش کامل نیست."
+          );
 
           return;
-
         }
 
-
         db.reports.push({
-
           id:
             Date.now(),
 
@@ -720,91 +848,149 @@ io.on(
           createdAt:
             new Date()
               .toISOString()
-
         });
 
-
-        save();
-
+        saveDatabase();
 
         socket.emit(
           "reported",
           "گزارش با موفقیت ثبت شد."
         );
-
       }
     );
 
-
-    /* DISCONNECT */
+    /* =====================
+       DISCONNECT
+    ===================== */
 
     socket.on(
       "disconnect",
       () => {
-
-        const id =
+        const myId =
           sockets.get(
             socket.id
           );
 
-
-        if (id) {
-
-          removeWaiting(
-            id
-          );
-
-
-          if (
-            online.get(id) ===
-            socket.id
-          ) {
-
-            online.delete(
-              id
-            );
-
-          }
-
-
-          rooms.delete(
-            id
-          );
-
-
-          emitOnline();
-
+        if (!myId) {
+          return;
         }
 
+        console.log(
+          "Disconnected:",
+          myId
+        );
+
+        removeWaiting(
+          myId
+        );
+
+        const roomId =
+          rooms.get(myId);
+
+        if (roomId) {
+          /*
+            اطلاع به طرف مقابل
+          */
+
+          for (
+            const [
+              userId,
+              userRoom
+            ] of rooms
+          ) {
+            if (
+              userRoom ===
+                roomId &&
+              userId !== myId
+            ) {
+              const partnerSocketId =
+                online.get(
+                  userId
+                );
+
+              const partnerSocket =
+                io.sockets.sockets.get(
+                  partnerSocketId
+                );
+
+              if (
+                partnerSocket
+              ) {
+                partnerSocket.leave(
+                  roomId
+                );
+
+                partnerSocket.emit(
+                  "partner_left"
+                );
+              }
+
+              rooms.delete(
+                userId
+              );
+            }
+          }
+
+          rooms.delete(
+            myId
+          );
+        }
+
+        /*
+          فقط اگر این socket
+          اتصال فعلی کاربر است
+        */
+
+        if (
+          online.get(myId) ===
+          socket.id
+        ) {
+          online.delete(
+            myId
+          );
+        }
 
         sockets.delete(
           socket.id
         );
 
-
-        console.log(
-          "Disconnected:",
-          socket.id
-        );
-
+        emitOnlineUsers();
       }
     );
-
   }
 );
 
-
-/* ---------------- START ---------------- */
+/* =========================
+   START SERVER
+========================= */
 
 server.listen(
   PORT,
   "0.0.0.0",
   () => {
+    console.log(
+      "================================"
+    );
 
     console.log(
-      "Chatogram running on port " +
+      "Chatogram server started"
+    );
+
+    console.log(
+      "Port:",
       PORT
     );
 
+    console.log(
+      "Guest mode: ENABLED"
+    );
+
+    console.log(
+      "Real-time chat: ENABLED"
+    );
+
+    console.log(
+      "================================"
+    );
   }
 );
